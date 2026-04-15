@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -20,28 +23,23 @@ func main() {
 	flag.Parse()
 
 	status := run(ctx, cancel, *httpPort, *dataDir)
-	// logger.Printf("Linko is running on http://localhost:%d", *httpPort)
 	cancel()
-	// logger.Printf("Linko is shutting down")
 	os.Exit(status)
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	var loggerStandard = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
-	logsFile, err := os.OpenFile("linko.access.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logger, err := initializeLogger()
 	if err != nil {
-		loggerStandard.Printf("failed to open log file: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
-	defer logsFile.Close()
-	var logger = log.New(logsFile, "INFO: ", log.LstdFlags)
-	var loggerAccess = log.New(logsFile, "INFO: ", log.LstdFlags)
-	st, err := store.New(dataDir, loggerStandard)
+
+	st, err := store.New(dataDir, logger)
 	if err != nil {
-		loggerStandard.Printf("failed to create store: %v", err)
+		logger.Printf("failed to create store: %v", err)
 		return 1
 	}
-	s := newServer(*st, httpPort, cancel, loggerAccess)
+	s := newServer(*st, httpPort, cancel, logger)
 	var serverErr error
 	go func() {
 		serverErr = s.start()
@@ -61,4 +59,22 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		return 1
 	}
 	return 0
+}
+
+func initializeLogger() (*log.Logger, error) {
+	logFile := os.Getenv("LINKO_LOG_FILE")
+	var writer io.Writer
+	if logFile == "" {
+		writer = io.MultiWriter(os.Stdout)
+	} else {
+		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		bufferedFile := bufio.NewWriterSize(f, 8192)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open log file: %w", err)
+		}
+		writer = io.MultiWriter(os.Stdout, bufferedFile)
+	}
+
+	logger := log.New(writer, "", log.LstdFlags)
+	return logger, nil
 }
