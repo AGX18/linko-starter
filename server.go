@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -16,10 +16,10 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
-	logger     *log.Logger
+	logger     *slog.Logger
 }
 
-func newServer(store store.Store, port int, cancel context.CancelFunc, logger *log.Logger) *server {
+func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
@@ -57,7 +57,7 @@ func (s *server) start() error {
 }
 
 func (s *server) shutdown(ctx context.Context) error {
-	s.logger.Printf("Linko is shutting down")
+	s.logger.Info("Linko is shutting down")
 	return s.httpServer.Shutdown(ctx)
 }
 
@@ -70,11 +70,11 @@ func (s *server) handlerShutdown(w http.ResponseWriter, r *http.Request) {
 	go s.cancel()
 }
 
-func requestLogger(logger *log.Logger) func(http.Handler) http.Handler {
+func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
-			logger.Printf("Served request: %s %s", r.Method, r.URL.Path)
+			logger.Info("Served request: %s %s", r.Method, r.URL.Path)
 		})
 	}
 }
