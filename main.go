@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -35,13 +34,13 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	}
 	defer func() {
 		if err := closeLogger(); err != nil {
-			logger.Info(fmt.Sprintf("failed to close logger: %v", err))
+			logger.Error("failed to close logger", slog.String("err", err.Error()))
 		}
 	}()
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Info(fmt.Sprintf("failed to create store: %v", err))
+		logger.Error("failed to create store", slog.String("err", err.Error()))
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -49,18 +48,18 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	go func() {
 		serverErr = s.start()
 	}()
-	logger.Info(fmt.Sprintf("Linko is running on http://localhost:%d", httpPort))
+	logger.Debug("Linko is running on http://localhost:%d", slog.Int("port", httpPort))
 
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Info(fmt.Sprintf("failed to shutdown server: %v", err))
+		logger.Error("failed to shutdown server", slog.String("err", err.Error()))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Info(fmt.Sprintf("server error: %v", serverErr))
+		logger.Error("server error", slog.String("err", serverErr.Error()))
 		return 1
 	}
 	return 0
@@ -69,12 +68,18 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 type closeFunc func() error
 
 func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
+	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
 
-	var writer io.Writer
+	var infoHandler slog.Handler
+
+	var logger *slog.Logger
+
 	var bufferedFile *bufio.Writer
 	var f *os.File
 	if logFile == "" {
-		writer = io.MultiWriter(os.Stderr)
+		logger = slog.New(debugHandler)
 	} else {
 		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -84,10 +89,15 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 			}, fmt.Errorf("failed to open log file: %w", err)
 		}
 		bufferedFile = bufio.NewWriterSize(f, 8192)
-		writer = io.MultiWriter(os.Stderr, bufferedFile)
+		infoHandler = slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})
+		logger = slog.New(slog.NewMultiHandler(
+			debugHandler,
+			infoHandler,
+		))
 	}
 
-	logger := slog.New(slog.NewTextHandler(writer, nil))
 	return logger, func() error {
 		if logFile == "" {
 			return nil

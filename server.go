@@ -57,7 +57,7 @@ func (s *server) start() error {
 }
 
 func (s *server) shutdown(ctx context.Context) error {
-	s.logger.Info("Linko is shutting down")
+	s.logger.Debug("Linko is shutting down")
 	return s.httpServer.Shutdown(ctx)
 }
 
@@ -74,7 +74,10 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
-			logger.Info("Served request: %s %s", r.Method, r.URL.Path)
+			logger.Info("Served request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("client_ip", r.RemoteAddr))
 		})
 	}
 }
