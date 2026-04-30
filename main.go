@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -15,6 +14,7 @@ import (
 	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/linkerr"
 	"boot.dev/linko/internal/store"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
@@ -100,21 +100,20 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 
 	var logger *slog.Logger
 
-	var bufferedFile *bufio.Writer
-	var f *os.File
+	var loggerfile *lumberjack.Logger
+
 	if logFile == "" {
 		logger = slog.New(debugHandler)
 	} else {
-		var err error
-		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, func() error {
-				f.Close()
-				return nil
-			}, fmt.Errorf("failed to open log file: %w", err)
+		loggerfile = &lumberjack.Logger{
+			Filename:   logFile,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-		bufferedFile = bufio.NewWriterSize(f, 8192)
-		infoHandler = slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+		infoHandler = slog.NewJSONHandler(loggerfile, &slog.HandlerOptions{
 			Level:       slog.LevelInfo,
 			ReplaceAttr: replaceAttr,
 		})
@@ -128,8 +127,7 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 		if logFile == "" {
 			return nil
 		}
-		bufferedFile.Flush()
-		f.Close()
+		loggerfile.Close()
 		return nil
 	}, nil
 }
