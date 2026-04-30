@@ -66,7 +66,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	go func() {
 		serverErr = s.start()
 	}()
-	logger.Debug("Linko is running on http://localhost:%d", slog.Int("port", httpPort))
+	logger.Debug(fmt.Sprintf("Linko is running on http://localhost:%d", httpPort), slog.Int("port", httpPort))
 
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -133,23 +133,22 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	if a.Key == "error" {
 		err, ok := a.Value.Any().(error)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "DEBUG: not an error, type is %T, value is %v\n", a.Value.Any(), a.Value.Any())
-
 			return a
 		}
 
 		base := []slog.Attr{}
 
-		// var errs []slog.Attr = make([]slog.Attr, 0)
-		if err, ok := errors.AsType[multiError](err); ok {
-			for i, subErr := range err.Unwrap() {
+		if err2, ok := errors.AsType[multiError](err); ok {
+			for i, subErr := range err2.Unwrap() {
 				base = append(base, slog.GroupAttrs(
 					fmt.Sprintf("error_%d", i+1),
 					errorAttrs(subErr)...))
 			}
 		} else {
 			base = errorAttrs(err)
-			return slog.GroupAttrs("error", base...)
+			out := slog.GroupAttrs("error", base...)
+			fmt.Fprintf(os.Stderr, "OUT key=%q kind=%v len(base)=%d\n", out.Key, out.Value.Kind(), len(base))
+			return out
 		}
 		return slog.GroupAttrs("errors", base...)
 	}
