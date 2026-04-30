@@ -26,7 +26,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(logger)(mux),
+		Handler: RequestID(requestLogger(logger)(mux)),
 	}
 
 	s := &server{
@@ -83,10 +83,11 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			spyWriter := &spyResponseWriter{ResponseWriter: w}
 			r.Body = spyReader
 			next.ServeHTTP(spyWriter, r)
-			fmt.Printf("DEBUG logCtx=%v logger=%v err=%v\n", logCtx, logger, logCtx.Error)
+			requestID := w.Header().Get("X-Request-ID")
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
+				slog.String("request_id", requestID),
 				slog.String("client_ip", r.RemoteAddr),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
